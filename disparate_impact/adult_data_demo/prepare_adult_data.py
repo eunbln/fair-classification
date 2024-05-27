@@ -1,9 +1,11 @@
-import os,sys
-import urllib2
+import os
+import sys
+import urllib.request
 sys.path.insert(0, '../../fair_classification/') # the code for fair classification is in this directory
 import utils as ut
 import numpy as np
 from random import seed, shuffle
+
 SEED = 1122334455
 seed(SEED) # set the random seed so that the random permutations can be reproduced again
 np.random.seed(SEED)
@@ -15,24 +17,22 @@ np.random.seed(SEED)
 
 def check_data_file(fname):
     files = os.listdir(".") # get the current directory listing
-    print "Looking for file '%s' in the current directory..." % fname
+    print("Looking for file '%s' in the current directory..." % fname)
 
     if fname not in files:
-        print "'%s' not found! Downloading from UCI Archive..." % fname
+        print("'%s' not found! Downloading from UCI Archive..." % fname)
         addr = "http://archive.ics.uci.edu/ml/machine-learning-databases/adult/%s" % fname
-        response = urllib2.urlopen(addr)
+        response = urllib.request.urlopen(addr)
         data = response.read()
-        fileOut = open(fname, "w")
-        fileOut.write(data)
-        fileOut.close()
-        print "'%s' download and saved locally.." % fname
+        with open(fname, "wb") as fileOut:
+            fileOut.write(data)
+        print("'%s' downloaded and saved locally.." % fname)
     else:
-        print "File found in current directory.."
+        print("File found in current directory..")
     
-    print
+    print()
     return
 
-        
 def load_adult_data(load_data_size=None):
 
     """
@@ -43,13 +43,11 @@ def load_adult_data(load_data_size=None):
     attrs = ['age', 'workclass', 'fnlwgt', 'education', 'education_num', 'marital_status', 'occupation', 'relationship', 'race', 'sex', 'capital_gain', 'capital_loss', 'hours_per_week', 'native_country'] # all attributes
     int_attrs = ['age', 'fnlwgt', 'education_num', 'capital_gain', 'capital_loss', 'hours_per_week'] # attributes with integer values -- the rest are categorical
     sensitive_attrs = ['sex'] # the fairness constraints will be used for this feature
-    attrs_to_ignore = ['sex', 'race' ,'fnlwgt'] # sex and race are sensitive feature so we will not use them in classification, we will not consider fnlwght for classification since its computed externally and it highly predictive for the class (for details, see documentation of the adult data)
+    attrs_to_ignore = ['sex', 'race', 'fnlwgt'] # sex and race are sensitive feature so we will not use them in classification, we will not consider fnlwght for classification since its computed externally and it highly predictive for the class (for details, see documentation of the adult data)
     attrs_for_classification = set(attrs) - set(attrs_to_ignore)
 
     # adult data comes in two different files, one for training and one for testing, however, we will combine data from both the files
     data_files = ["adult.data", "adult.test"]
-
-
 
     X = []
     y = []
@@ -84,13 +82,12 @@ def load_adult_data(load_data_size=None):
 
             y.append(class_label)
 
-
-            for i in range(0,len(line)-1):
+            for i in range(0, len(line) - 1):
                 attr_name = attrs[i]
                 attr_val = line[i]
                 # reducing dimensionality of some very sparse features
                 if attr_name == "native_country":
-                    if attr_val!="United-States":
+                    if attr_val != "United-States":
                         attr_val = "Non-United-Stated"
                 elif attr_name == "education":
                     if attr_val in ["Preschool", "1st-4th", "5th-6th", "7th-8th"]:
@@ -112,19 +109,17 @@ def load_adult_data(load_data_size=None):
 
             # compute integer codes for the unique values
             val_dict = {}
-            for i in range(0,len(uniq_vals)):
+            for i in range(0, len(uniq_vals)):
                 val_dict[uniq_vals[i]] = i
 
             # replace the values with their integer encoding
-            for i in range(0,len(attr_vals)):
+            for i in range(0, len(attr_vals)):
                 attr_vals[i] = val_dict[attr_vals[i]]
             d[attr_name] = attr_vals
 
-    
     # convert the discrete values to their integer representations
     convert_attrs_to_ints(x_control)
     convert_attrs_to_ints(attrs_to_vals)
-
 
     # if the integer vals are not binary, we need to get one-hot encoding for them
     for attr_name in attrs_for_classification:
@@ -137,14 +132,13 @@ def load_adult_data(load_data_size=None):
             for inner_col in attr_vals.T:                
                 X.append(inner_col) 
 
-
-    # convert to numpy arrays for easy handline
+    # convert to numpy arrays for easy handling
     X = np.array(X, dtype=float).T
-    y = np.array(y, dtype = float)
+    y = np.array(y, dtype=float)
     for k, v in x_control.items(): x_control[k] = np.array(v, dtype=float)
         
     # shuffle the data
-    perm = range(0,len(y)) # shuffle the data before creating each fold
+    perm = list(range(0, len(y))) # shuffle the data before creating each fold
     shuffle(perm)
     X = X[perm]
     y = y[perm]
@@ -153,7 +147,7 @@ def load_adult_data(load_data_size=None):
 
     # see if we need to subsample the data
     if load_data_size is not None:
-        print "Loading only %d examples from the data" % load_data_size
+        print("Loading only %d examples from the data" % load_data_size)
         X = X[:load_data_size]
         y = y[:load_data_size]
         for k in x_control.keys():
