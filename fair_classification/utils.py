@@ -1,55 +1,24 @@
 import numpy as np
 from random import seed, shuffle
-import loss_funcs as lf # our implementation of loss funcs
-from scipy.optimize import minimize # for loss func minimization
-from multiprocessing import Pool, Process, Queue
-from collections import defaultdict
-from copy import deepcopy
-import matplotlib.pyplot as plt # for plotting stuff
+import loss_funcs as lf  # 손실 함수 모듈
+from scipy.optimize import minimize  # 최적화 알고리즘
+from multiprocessing import Pool, Process, Queue  # 병렬 처리
+from collections import defaultdict  # 기본값을 가진 사전
+from copy import deepcopy  # 객체 복사
+import matplotlib.pyplot as plt  # 시각화
 import sys
 
+# 시드 설정
 SEED = 1122334455
 seed(SEED) # set the random seed so that the random permutations can be reproduced again
 np.random.seed(SEED)
 
 
 
-
+# 모델 훈련 함수
 def train_model(x, y, x_control, loss_function, apply_fairness_constraints, apply_accuracy_constraint, sep_constraint, sensitive_attrs, sensitive_attrs_to_cov_thresh, gamma=None):
 
-    """
-
-    Function that trains the model subject to various fairness constraints.
-    If no constraints are given, then simply trains an unaltered classifier.
-    Example usage in: "synthetic_data_demo/decision_boundary_demo.py"
-
-    ----
-
-    Inputs:
-
-    X: (n) x (d+1) numpy array -- n = number of examples, d = number of features, one feature is the intercept
-    y: 1-d numpy array (n entries)
-    x_control: dictionary of the type {"s": [...]}, key "s" is the sensitive feature name, and the value is a 1-d list with n elements holding the sensitive feature values
-    loss_function: the loss function that we want to optimize -- for now we have implementation of logistic loss, but other functions like hinge loss can also be added
-    apply_fairness_constraints: optimize accuracy subject to fairness constraint (0/1 values)
-    apply_accuracy_constraint: optimize fairness subject to accuracy constraint (0/1 values)
-    sep_constraint: apply the fine grained accuracy constraint
-        for details, see Section 3.3 of arxiv.org/abs/1507.05259v3
-        For examples on how to apply these constraints, see "synthetic_data_demo/decision_boundary_demo.py"
-    Note: both apply_fairness_constraints and apply_accuracy_constraint cannot be 1 at the same time
-    sensitive_attrs: ["s1", "s2", ...], list of sensitive features for which to apply fairness constraint, all of these sensitive features should have a corresponding array in x_control
-    sensitive_attrs_to_cov_thresh: the covariance threshold that the classifier should achieve (this is only needed when apply_fairness_constraints=1, not needed for the other two constraints)
-    gamma: controls the loss in accuracy we are willing to incur when using apply_accuracy_constraint and sep_constraint
-
-    ----
-
-    Outputs:
-
-    w: the learned weight vector for the classifier
-
-    """
-
-
+    
     assert((apply_accuracy_constraint == 1 and apply_fairness_constraints == 1) == False) # both constraints cannot be applied at the same time
 
     max_iter = 100000 # maximum number of iterations for the minimization algorithm
@@ -130,24 +99,17 @@ def train_model(x, y, x_control, loss_function, apply_fairness_constraints, appl
     try:
         assert(w.success == True)
     except:
-        print "Optimization problem did not converge.. Check the solution returned by the optimizer."
-        print "Returned solution is:"
-        print w
+        print ("Optimization problem did not converge.. Check the solution returned by the optimizer.")
+        print ("Returned solution is:")
+        print (w)
 
 
 
     return w.x
 
 
+# 교차 검증 오차 계산 함수
 def compute_cross_validation_error(x_all, y_all, x_control_all, num_folds, loss_function, apply_fairness_constraints, apply_accuracy_constraint, sep_constraint, sensitive_attrs, sensitive_attrs_to_cov_thresh_arr, gamma=None):
-
-
-    """
-    Computes the cross validation error for the classifier subject to various fairness constraints
-    This function is just a wrapper of "train_model(...)", all inputs (except for num_folds) are the same. See the specifications of train_model(...) for more info.
-
-    Returns lists of train/test accuracy (with each list holding values for all folds), the fractions of various sensitive groups in positive class (for train and test sets), and covariance between sensitive feature and distance from decision boundary (again, for both train and test folds).
-    """
 
     train_folds = []
     test_folds = []
@@ -156,14 +118,13 @@ def compute_cross_validation_error(x_all, y_all, x_control_all, num_folds, loss_
 
     # split the data into folds for cross-validation
     for i in range(0,num_folds):
-        perm = range(0,n_samples) # shuffle the data before creating each fold
+        perm = list(range(0, n_samples)) # range 객체를 리스트로 변환
         shuffle(perm)
         x_all_perm = x_all[perm]
         y_all_perm = y_all[perm]
         x_control_all_perm = {}
         for k in x_control_all.keys():
             x_control_all_perm[k] = np.array(x_control_all[k])[perm]
-
 
         x_all_train, y_all_train, x_control_all_train, x_all_test, y_all_test, x_control_all_test = split_into_train_test(x_all_perm, y_all_perm, x_control_all_perm, train_fold_size)
 
@@ -190,9 +151,7 @@ def compute_cross_validation_error(x_all, y_all, x_control_all, num_folds, loss_
 
         output_folds.put([fold_num, test_score, train_score, correlation_dict_test, correlation_dict_train, cov_dict_test, cov_dict_train])
 
-
         return
-
 
     output_folds = Queue()
     processes = [Process(target=train_test_single_fold, args=(train_folds[x], test_folds[x], x, output_folds, sensitive_attrs_to_cov_thresh_arr[x])) for x in range(num_folds)]
@@ -201,12 +160,10 @@ def compute_cross_validation_error(x_all, y_all, x_control_all, num_folds, loss_
     for p in processes:
         p.start()
 
-
-    # Get the reuslts
+    # Get the results
     results = [output_folds.get() for p in processes]
     for p in processes:
         p.join()
-    
     
     test_acc_arr = []
     train_acc_arr = []
@@ -226,11 +183,10 @@ def compute_cross_validation_error(x_all, y_all, x_control_all, num_folds, loss_
         cov_dict_test_arr.append(cov_dict_test)
         cov_dict_train_arr.append(cov_dict_train)
 
-    
     return test_acc_arr, train_acc_arr, correlation_dict_test_arr, correlation_dict_train_arr, cov_dict_test_arr, cov_dict_train_arr
 
 
-
+# 분류기의 편향 통계 출력 함수
 def print_classifier_fairness_stats(acc_arr, correlation_dict_arr, cov_dict_arr, s_attr_name):
     
     correlation_dict = get_avg_correlation_dict(correlation_dict_arr)
@@ -238,36 +194,40 @@ def print_classifier_fairness_stats(acc_arr, correlation_dict_arr, cov_dict_arr,
     prot_pos = correlation_dict[s_attr_name][0][1]
     p_rule = (prot_pos / non_prot_pos) * 100.0
     
-    print "Accuracy: %0.2f" % (np.mean(acc_arr))
-    print "Protected/non-protected in +ve class: %0.0f%% / %0.0f%%" % (prot_pos, non_prot_pos)
-    print "P-rule achieved: %0.0f%%" % (p_rule)
-    print "Covariance between sensitive feature and decision from distance boundary : %0.3f" % (np.mean([v[s_attr_name] for v in cov_dict_arr]))
+    print ("Accuracy: %0.2f" % (np.mean(acc_arr)))
+    print ("Protected/non-protected in +ve class: %0.0f%% / %0.0f%%" % (prot_pos, non_prot_pos))
+    print ("P-rule achieved: %0.0f%%" % (p_rule))
+    print ("Covariance between sensitive feature and decision from distance boundary : %0.3f" % (np.mean([v[s_attr_name] for v in cov_dict_arr])))
     print
     return p_rule
 
+
+# P-규칙 계산 함수
 def compute_p_rule(x_control, class_labels):
-
     """ Compute the p-rule based on Doctrine of disparate impact """
-
     non_prot_all = sum(x_control == 1.0) # non-protected group
     prot_all = sum(x_control == 0.0) # protected group
     non_prot_pos = sum(class_labels[x_control == 1.0] == 1.0) # non_protected in positive class
     prot_pos = sum(class_labels[x_control == 0.0] == 1.0) # protected in positive class
+
+    if non_prot_all == 0 or prot_all == 0:
+        print("Error: All samples belong to one group.")
+        return None
+
     frac_non_prot_pos = float(non_prot_pos) / float(non_prot_all)
     frac_prot_pos = float(prot_pos) / float(prot_all)
     p_rule = (frac_prot_pos / frac_non_prot_pos) * 100.0
-    print
-    print "Total data points: %d" % (len(x_control))
-    print "# non-protected examples: %d" % (non_prot_all)
-    print "# protected examples: %d" % (prot_all)
-    print "Non-protected in positive class: %d (%0.0f%%)" % (non_prot_pos, non_prot_pos * 100.0 / non_prot_all)
-    print "Protected in positive class: %d (%0.0f%%)" % (prot_pos, prot_pos * 100.0 / prot_all)
-    print "P-rule is: %0.0f%%" % ( p_rule )
+
+    print ("Total data points: %d" % (len(x_control)))
+    print ("# non-protected examples: %d" % (non_prot_all))
+    print ("# protected examples: %d" % (prot_all))
+    print ("Non-protected in positive class: %d (%0.0f%%)" % (non_prot_pos, non_prot_pos * 100.0 / non_prot_all))
+    print ("Protected in positive class: %d (%0.0f%%)" % (prot_pos, prot_pos * 100.0 / prot_all))
+    print ("P-rule is: %0.0f%%" % ( p_rule ))
     return p_rule
 
 
-
-
+# 선형 분류 모델에서 상수항(intercept)을 추가하는 함수
 def add_intercept(x):
 
     """ Add intercept to the data before linear classification """
@@ -275,6 +235,9 @@ def add_intercept(x):
     intercept = np.ones(m).reshape(m, 1) # the constant b
     return np.concatenate((intercept, x), axis = 1)
 
+
+# 입력된 배열이 0과 1로만 이루어져 있는지 확인
+# 이진 분류 작업을 위해 사용
 def check_binary(arr):
     "give an array of values, see if the values are only 0 and 1"
     s = sorted(set(arr))
@@ -283,18 +246,17 @@ def check_binary(arr):
     else:
         return False
 
-def get_one_hot_encoding(in_arr):
-    """
-        input: 1-D arr with int vals -- if not int vals, will raise an error
-        output: m (ndarray): one-hot encoded matrix
-                d (dict): also returns a dictionary original_val -> column in encoded matrix
-    """
 
-    for k in in_arr:
-        if str(type(k)) != "<type 'numpy.float64'>" and type(k) != int and type(k) != np.int64:
-            print str(type(k))
-            print "************* ERROR: Input arr does not have integer types"
-            return None
+# 입력 배열을 원-핫 인코딩 형식으로 변환
+# 범주형 데이터를 처리하기 위해 사용
+def get_one_hot_encoding(in_arr):
+
+
+    #for k in in_arr:
+        #if str(type(k)) != "<type 'numpy.float64'>" and type(k) != int and type(k) != np.int64:
+            #print (str(type(k)))
+            #print ("************* ERROR: Input arr does not have integer types")
+            #return None
         
     in_arr = np.array(in_arr, dtype=int)
     assert(len(in_arr.shape)==1) # no column, means it was a 1-D arr
@@ -319,16 +281,13 @@ def get_one_hot_encoding(in_arr):
 
     return np.array(out_arr), index_dict
 
+
+# 모델의 정확도를 확인
+# 모델과 테스트 데이터가 주어지면 예측된 레이블과 실제 레이블 간의 일치율을 계산
 def check_accuracy(model, x_train, y_train, x_test, y_test, y_train_predicted, y_test_predicted):
 
-
-    """
-    returns the train/test accuracy of the model
-    we either pass the model (w)
-    else we pass y_predicted
-    """
     if model is not None and y_test_predicted is not None:
-        print "Either the model (w) or the predicted labels should be None"
+        print ("Either the model (w) or the predicted labels should be None")
         raise Exception("Either the model (w) or the predicted labels should be None")
 
     if model is not None:
@@ -345,24 +304,12 @@ def check_accuracy(model, x_train, y_train, x_test, y_test, y_train_predicted, y
 
     return train_score, test_score, correct_answers_train, correct_answers_test
 
+
+# 민감한 속성 제약 조건을 테스트
+# 테스트할 데이터와 모델, 임계값 등이 주어지면 제약 조건을 평가
 def test_sensitive_attr_constraint_cov(model, x_arr, y_arr_dist_boundary, x_control, thresh, verbose):
 
     
-    """
-    The covariance is computed b/w the sensitive attr val and the distance from the boundary
-    If the model is None, we assume that the y_arr_dist_boundary contains the distace from the decision boundary
-    If the model is not None, we just compute a dot product or model and x_arr
-    for the case of SVM, we pass the distace from bounday becase the intercept in internalized for the class
-    and we have compute the distance using the project function
-
-    this function will return -1 if the constraint specified by thresh parameter is not satifsified
-    otherwise it will reutrn +1
-    if the return value is >=0, then the constraint is satisfied
-    """
-
-    
-
-
     assert(x_arr.shape[0] == x_control.shape[0])
     if len(x_control.shape) > 1: # make sure we just have one column in the array
         assert(x_control.shape[1] == 1)
@@ -382,17 +329,16 @@ def test_sensitive_attr_constraint_cov(model, x_arr, y_arr_dist_boundary, x_cont
     ans = thresh - abs(cov) # will be <0 if the covariance is greater than thresh -- that is, the condition is not satisfied
     # ans = thresh - cov # will be <0 if the covariance is greater than thresh -- that is, the condition is not satisfied
     if verbose is True:
-        print "Covariance is", cov
-        print "Diff is:", ans
+        print ("Covariance is", cov)
+        print ("Diff is:", ans)
         print
     return ans
 
+
+# 민감한 속성과 결정 사이의 공분산을 출력
+# 각 민감한 속성 값에 대한 공분산을 계산하고 출력
 def print_covariance_sensitive_attrs(model, x_arr, y_arr_dist_boundary, x_control, sensitive_attrs):
 
-
-    """
-    reutrns the covariance between sensitive features and distance from decision boundary
-    """
 
     arr = []
     if model is None:
@@ -431,12 +377,10 @@ def print_covariance_sensitive_attrs(model, x_arr, y_arr_dist_boundary, x_contro
     return sensitive_attrs_to_cov_original
 
 
+# 민감한 속성과 예측된 클래스 사이의 상관 관계를 계산
+# 테스트 데이터와 예측된 레이블, 민감한 속성이 주어지면 상관 관계를 계산
 def get_correlations(model, x_test, y_predicted, x_control_test, sensitive_attrs):
     
-
-    """
-    returns the fraction in positive class for sensitive feature values
-    """
 
     if model is not None:
         y_predicted = np.sign(np.dot(x_test, model))
@@ -482,12 +426,8 @@ def get_correlations(model, x_test, y_predicted, x_control_test, sensitive_attrs
     return out_dict
 
 
-
+# 편향 제약 조건 생성 함수
 def get_constraint_list_cov(x_train, y_train, x_control_train, sensitive_attrs, sensitive_attrs_to_cov_thresh):
-
-    """
-    get the list of constraints to be fed to the minimizer
-    """
 
     constraints = []
 
@@ -517,7 +457,7 @@ def get_constraint_list_cov(x_train, y_train, x_control_train, sensitive_attrs, 
     return constraints
 
 
-
+# 훈련 및 테스트 데이터 분할 함수
 def split_into_train_test(x_all, y_all, x_control_all, train_fold_size):
 
     split_point = int(round(float(x_all.shape[0]) * train_fold_size))
@@ -534,6 +474,8 @@ def split_into_train_test(x_all, y_all, x_control_all, train_fold_size):
     return x_all_train, y_all_train, x_control_all_train, x_all_test, y_all_test, x_control_all_test
 
 
+# 상관 관계 딕셔너리의 평균값을 계산
+# 여러 교차 검증 결과의 상관 관계를 평균하여 반환
 def get_avg_correlation_dict(correlation_dict_arr):
     # make the structure for the correlation dict
     correlation_dict_avg = {}
@@ -561,7 +503,8 @@ def get_avg_correlation_dict(correlation_dict_arr):
     return correlation_dict_avg
 
 
-
+# 다양한 공분산 임계값에 따른 정확도와 양성 클래스 비율을 시각화
+# 편향과 정확도 사이의 트레이드 오프를 분석
 def plot_cov_thresh_vs_acc_pos_ratio(x_all, y_all, x_control_all, num_folds, loss_function, apply_fairness_constraints, apply_accuracy_constraint, sep_constraint, sensitive_attrs):
 
 
@@ -585,7 +528,7 @@ def plot_cov_thresh_vs_acc_pos_ratio(x_all, y_all, x_control_all, num_folds, los
     test_acc_arr, train_acc_arr, correlation_dict_test_arr, correlation_dict_train_arr, cov_dict_test_arr, cov_dict_train_arr = compute_cross_validation_error(x_all, y_all, x_control_all, num_folds, loss_function, 0, apply_accuracy_constraint, sep_constraint, sensitive_attrs, [{} for i in range(0,num_folds)], 0)
 
     for c in cov_range:
-        print "LOG: testing for multiplicative factor: %0.2f" % c
+        print ("LOG: testing for multiplicative factor: %0.2f" % c)
         sensitive_attrs_to_cov_original_arr_multiplied = []
         for sensitive_attrs_to_cov_original in cov_dict_train_arr:
             sensitive_attrs_to_cov_thresh = deepcopy(sensitive_attrs_to_cov_original)
@@ -641,6 +584,7 @@ def plot_cov_thresh_vs_acc_pos_ratio(x_all, y_all, x_control_all, num_folds, los
     plt.show()
 
 
+# 라인 좌표 계산 함수
 def get_line_coordinates(w, x1, x2):
     y1 = (-w[0] - (w[1] * x1)) / w[2]
     y2 = (-w[0] - (w[1] * x2)) / w[2]    
