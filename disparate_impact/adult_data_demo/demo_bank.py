@@ -7,12 +7,12 @@ import loss_funcs as lf # loss funcs that can be optimized subject to various co
 
 
 
-def test_adult_data():
+def test_bank_data():
 	
 
 	""" Load the adult data """
-	X, y, x_control = load_adult_data(load_data_size=10000) # set the argument to none, or no arguments if you want to test with the whole data -- we are subsampling for performance speedup
-	ut.compute_p_rule(x_control["housing"], y) # compute the p-rule in the original data
+	X, y, x_control = load_bank_data(load_data_size=10000) # set the argument to none, or no arguments if you want to test with the whole data -- we are subsampling for performance speedup
+	ut.compute_p_rule(x_control["marital"], y) # compute the p-rule in the original data
 
 
 
@@ -29,7 +29,7 @@ def test_adult_data():
 	sep_constraint = None
 
 	loss_function = lf._logistic_loss
-	sensitive_attrs = ["housing"]
+	sensitive_attrs = ["marital"]
 	sensitive_attrs_to_cov_thresh = {}
 	gamma = None
 
@@ -57,7 +57,7 @@ def test_adult_data():
 	apply_fairness_constraints = 1 # set this flag to one since we want to optimize accuracy subject to fairness constraints
 	apply_accuracy_constraint = 0
 	sep_constraint = 0
-	sensitive_attrs_to_cov_thresh = {"housing":0}
+	sensitive_attrs_to_cov_thresh = {"marital":0}
 	print
 	print ("== Classifier with fairness constraint ==")
 	w_f_cons, p_f_cons, acc_f_cons  = train_test_classifier()
@@ -87,7 +87,7 @@ def test_adult_data():
 	return
 
 def main():
-	test_adult_data()
+	test_bank_data()
 
 
 if __name__ == '__main__':
